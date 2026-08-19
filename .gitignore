@@ -8,6 +8,7 @@
 *.o
 *.so
 build/
+/dist/
 
 # Editor/OS cruft.
 .DS_Store

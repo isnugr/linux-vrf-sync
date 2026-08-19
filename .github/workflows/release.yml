@@ -1,0 +1,112 @@
+name: Build and release .deb
+
+# Every push/PR builds the plugin against the pinned VPP_VERSION and
+# packages a .deb as a workflow artifact, for CI validation. Pushing a
+# tag matching v*.*.* additionally publishes that .deb on a GitHub
+# Release, using the tag (with the leading "v" stripped) as the
+# package's own version. VPP_VERSION at the repo root pins which VPP
+# release this plugin is built against, independent of the plugin's
+# own version -- see README.md for why the two are decoupled.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*.*.*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      vpp_ref:
+        description: 'VPP git ref to build against (overrides VPP_VERSION)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    # Build inside a Debian Bookworm container: this plugin is
+    # developed and tested against a Debian 12 / VPP FD.io-packaging
+    # target, and its own build (via VPP's `make install-dep`) is
+    # apt-based.
+    container:
+      image: debian:bookworm
+
+    steps:
+      - name: Install git (minimal base image)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates ninja-build chrpath
+
+      - name: Checkout plugin source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Determine VPP ref
+        id: vpp_ref
+        run: |
+          if [ -n "${{ inputs.vpp_ref }}" ]; then
+            ref="${{ inputs.vpp_ref }}"
+          else
+            ref="$(cat VPP_VERSION)"
+          fi
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine plugin package version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0+g$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone matching VPP source
+        run: |
+          git clone --branch "${{ steps.vpp_ref.outputs.ref }}" --depth 1 \
+            https://github.com/FDio/vpp.git vpp
+
+      - name: Symlink plugin source into VPP tree
+        run: ./scripts/link-into-vpp-tree.sh "${GITHUB_WORKSPACE}/vpp"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: vpp/build-root/.ccache
+          key: ccache-${{ runner.os }}-${{ steps.vpp_ref.outputs.ref }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ steps.vpp_ref.outputs.ref }}-
+
+      - name: Install VPP build dependencies
+        working-directory: vpp
+        run: make install-dep
+
+      - name: Build
+        working-directory: vpp
+        run: make build-release
+
+      - name: Build .deb package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VPP_TAG: ${{ steps.vpp_ref.outputs.ref }}
+        run: ./scripts/build-deb.sh "${GITHUB_WORKSPACE}/vpp" "${GITHUB_WORKSPACE}/dist"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-vrf-sync-plugin-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          generate_release_notes: true

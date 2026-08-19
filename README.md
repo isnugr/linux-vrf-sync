@@ -153,6 +153,33 @@ plugin linux_vrf_sync_plugin.so {
 inside the existing `plugins { }` stanza -- no other line is touched.
 Restart VPP to load it.
 
+## Releases
+
+`.github/workflows/release.yml` builds this plugin against the VPP
+version pinned in [`VPP_VERSION`](VPP_VERSION) and packages
+`linux_vrf_sync_plugin.so` as a `.deb` on every push and pull request
+(as a build artifact, for CI validation), and additionally publishes
+that `.deb` on a GitHub Release whenever a tag matching `v*.*.*` is
+pushed -- the tag (without its leading `v`) becomes the package's own
+version. Because this plugin's ABI is tied to a specific VPP release
+rather than a stable one, the package version folds in the VPP
+version it was built against, e.g.:
+
+```
+linux-vrf-sync-plugin_1.0.0~vpp26.06_amd64.deb
+```
+
+Bumping [`VPP_VERSION`](VPP_VERSION) to track a newer VPP release
+(after re-validating the APIs listed in
+[Design notes](#design-notes) against it) and cutting a new tag is
+the intended way to publish a build for a different VPP version. The
+same packaging step can be run locally after building per
+[Building](#building) above:
+
+```bash
+VERSION=1.0.0 VPP_TAG=v26.06 ./scripts/build-deb.sh
+```
+
 ## CLI
 
 ```
