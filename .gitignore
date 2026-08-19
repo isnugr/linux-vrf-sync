@@ -1,0 +1,14 @@
+# Disposable VPP source tree(s) used to build against -- never
+# committed; clone your own matching your target VPP version.
+/vpp/
+/vpp-*/
+
+# Local build/scratch artifacts.
+*.log
+*.o
+*.so
+build/
+
+# Editor/OS cruft.
+.DS_Store
+*.swp
