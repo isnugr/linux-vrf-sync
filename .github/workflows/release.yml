@@ -96,7 +96,25 @@ jobs:
 
       - name: Install VPP build dependencies
         working-directory: vpp
-        run: make install-dep
+        # UNATTENDED=yes is what makes VPP's own Makefile pass -y
+        # through to apt-get; it only "worked" without this in
+        # earlier manual testing because every dependency happened to
+        # already be installed there (0 new packages -> apt-get never
+        # prompts even without -y). A clean image with real new
+        # packages to install hits the interactive confirmation
+        # prompt and fails without this.
+        #
+        # DEBIAN_FRONTEND=noninteractive is set here, not relied on
+        # from the Makefile, because the Makefile's own
+        # DEBIAN_FRONTEND=noninteractive (set in the same UNATTENDED
+        # block) is never `export`ed to the shell recipe -- it has no
+        # effect on the child apt-get process. Some dependencies in
+        # this list (e.g. wireshark-common, pulled in by tshark) ask
+        # a debconf question independent of apt-get's own -y flag, so
+        # this is still needed even with UNATTENDED=yes.
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: make install-dep UNATTENDED=yes
 
       - name: Build
         working-directory: vpp
