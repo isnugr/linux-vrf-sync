@@ -34,10 +34,21 @@ jobs:
       image: debian:bookworm
 
     steps:
-      - name: Install git (minimal base image)
+      - name: Bootstrap minimal base image
+        # debian:bookworm ships nothing beyond a minimal base -- not
+        # even `make`/`gcc` (build-essential), which `make install-dep`
+        # itself needs just to be invoked, or `sudo`, which VPP's
+        # install-dep target always shells out through
+        # (`sudo -E apt-get ...`) even when already running as root.
+        # Everything else VPP's own build needs (cmake, python deps,
+        # libnl headers, etc.) is installed by `make install-dep`
+        # below; this step only bootstraps what's needed to get that
+        # far, plus chrpath which scripts/build-deb.sh uses and isn't
+        # part of VPP's own deps.
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates ninja-build chrpath
+          apt-get install -y --no-install-recommends \
+            build-essential sudo git ca-certificates ninja-build chrpath
 
       - name: Checkout plugin source
         uses: actions/checkout@v4
